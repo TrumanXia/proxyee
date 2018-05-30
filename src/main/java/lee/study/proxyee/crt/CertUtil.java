@@ -1,23 +1,21 @@
 package lee.study.proxyee.crt;
 
-import lee.study.proxyee.server.HttpProxyServer;
-import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x509.Extension;
-import org.bouncycastle.asn1.x509.GeneralName;
-import org.bouncycastle.asn1.x509.GeneralNames;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.math.BigInteger;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.security.*;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.SecureRandom;
+import java.security.Security;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.EncodedKeySpec;
@@ -29,11 +27,25 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 public class CertUtil {
 
   private static KeyFactory keyFactory = null;
-  private static final long TEN_YEAR = TimeUnit.DAYS.toMillis(3650);
+
+  static {
+    //注册BouncyCastleProvider加密库
+    Security.addProvider(new BouncyCastleProvider());
+  }
 
   private static KeyFactory getKeyFactory() throws NoSuchAlgorithmException {
     if (keyFactory == null) {
@@ -52,7 +64,8 @@ public class CertUtil {
   }
 
   /**
-   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out ca_private.der
+   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out
+   * ca_private.der
    */
   public static PrivateKey loadPriKey(byte[] bts) throws Exception {
     EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(bts);
@@ -60,21 +73,24 @@ public class CertUtil {
   }
 
   /**
-   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out ca_private.der
+   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out
+   * ca_private.der
    */
   public static PrivateKey loadPriKey(String path) throws Exception {
     return loadPriKey(Files.readAllBytes(Paths.get(path)));
   }
 
   /**
-   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out ca_private.der
+   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out
+   * ca_private.der
    */
   public static PrivateKey loadPriKey(URI uri) throws Exception {
     return loadPriKey(Paths.get(uri).toString());
   }
 
   /**
-   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out ca_private.der
+   * 从文件加载RSA私钥 openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in ca.key -out
+   * ca_private.der
    */
   public static PrivateKey loadPriKey(InputStream inputStream) throws Exception {
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -174,7 +190,8 @@ public class CertUtil {
    *
    * @param issuer 颁发机构
    */
-  public static X509Certificate genCert(String issuer, PublicKey serverPubKey, PrivateKey caPriKey,
+  public static X509Certificate genCert(String issuer, PrivateKey caPriKey, Date caNotBefore,
+      Date caNotAfter, PublicKey serverPubKey,
       String... hosts) throws Exception {
         /* String issuer = "C=CN, ST=GD, L=SZ, O=lee, OU=study, CN=ProxyeeRoot";
         String subject = "C=CN, ST=GD, L=SZ, O=lee, OU=study, CN=" + host;*/
@@ -182,9 +199,10 @@ public class CertUtil {
     String subject = "C=CN, ST=GD, L=SZ, O=lee, OU=study, CN=" + hosts[0];
     //doc from https://www.cryptoworkshop.com/guide/
     JcaX509v3CertificateBuilder jv3Builder = new JcaX509v3CertificateBuilder(new X500Name(issuer),
-        BigInteger.ONE,
-        HttpProxyServer.caNotBefore,
-        HttpProxyServer.caNotAfter,
+        //issue#3 修复ElementaryOS上证书不安全问题(serialNumber为1时证书会提示不安全)，避免serialNumber冲突，采用时间戳+4位随机数生成
+        BigInteger.valueOf(System.currentTimeMillis() + (long) (Math.random() * 10000) + 1000),
+        caNotBefore,
+        caNotAfter,
         new X500Name(subject),
         serverPubKey);
     //SAN扩展证书支持的域名，否则浏览器提示证书不安全
@@ -199,7 +217,36 @@ public class CertUtil {
     return new JcaX509CertificateConverter().getCertificate(jv3Builder.build(signer));
   }
 
-  public static void main(String[] args) {
+  /**
+   * 生成CA服务器证书
+   */
+  public static X509Certificate genCACert(String subject, Date caNotBefore, Date caNotAfter,
+      KeyPair keyPair) throws Exception {
+    JcaX509v3CertificateBuilder jv3Builder = new JcaX509v3CertificateBuilder(new X500Name(subject),
+        BigInteger.valueOf(System.currentTimeMillis() + (long) (Math.random() * 10000) + 1000),
+        caNotBefore,
+        caNotAfter,
+        new X500Name(subject),
+        keyPair.getPublic());
+    jv3Builder.addExtension(Extension.basicConstraints, true, new BasicConstraints(0));
+    ContentSigner signer = new JcaContentSignerBuilder("SHA256WithRSAEncryption")
+        .build(keyPair.getPrivate());
+    return new JcaX509CertificateConverter().getCertificate(jv3Builder.build(signer));
+  }
 
+  public static void main(String[] args) throws Exception {
+    //生成ca证书和私钥
+    KeyPair keyPair = CertUtil.genKeyPair();
+    File caCertFile = new File("e:/ssl/Proxyee.crt");
+    if(caCertFile.exists()){
+      caCertFile.delete();
+    }
+    Files.write(Paths.get(caCertFile.toURI()),
+        CertUtil.genCACert(
+            "C=CN, ST=GD, L=SZ, O=lee, OU=study, CN=Proxyee",
+            new Date(),
+            new Date(System.currentTimeMillis() + TimeUnit.DAYS.toMillis(3650)),
+            keyPair)
+            .getEncoded());
   }
 }

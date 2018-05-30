@@ -2,17 +2,29 @@ package lee.study.proxyee.util;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpRequest;
+import java.io.Serializable;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ProtoUtil {
 
-  public static RequestProto getRequestProto(HttpRequest httpRequest) {
+  public static RequestProto getRequestProto(HttpRequest httpRequest) throws MalformedURLException {
     RequestProto requestProto = new RequestProto();
     int port = -1;
     String hostStr = httpRequest.headers().get(HttpHeaderNames.HOST);
+    if(hostStr==null){
+      Pattern pattern = Pattern.compile("^(?:https?://)?(?<host>[^/]*)/?.*$");
+      Matcher matcher = pattern.matcher(httpRequest.uri());
+      if(matcher.find()){
+        hostStr = matcher.group("host");
+      }else{
+        return null;
+      }
+    }
     String uriStr = httpRequest.uri();
-    Pattern pattern = Pattern.compile("^(?:https?://)?(?<host>[^:]*)(?::(?<port>\\d+))?$");
+    Pattern pattern = Pattern.compile("^(?:https?://)?(?<host>[^:]*)(?::(?<port>\\d+))?(/.*)?$");
     Matcher matcher = pattern.matcher(hostStr);
     //先从host上取端口号没取到再从uri上取端口号 issues#4
     String portTemp = null;
@@ -42,11 +54,21 @@ public class ProtoUtil {
     return requestProto;
   }
 
-  public static class RequestProto {
+  public static class RequestProto implements Serializable {
 
+    private static final long serialVersionUID = -6471051659605127698L;
     private String host;
     private int port;
     private boolean ssl;
+
+    public RequestProto() {
+    }
+
+    public RequestProto(String host, int port, boolean ssl) {
+      this.host = host;
+      this.port = port;
+      this.ssl = ssl;
+    }
 
     public String getHost() {
       return host;

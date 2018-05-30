@@ -4,8 +4,10 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpContent;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.util.ReferenceCountUtil;
+import lee.study.proxyee.exception.HttpProxyExceptionHandle;
 import lee.study.proxyee.intercept.HttpProxyInterceptPipeline;
 
 public class HttpProxyClientHandle extends ChannelInboundHandlerAdapter {
@@ -18,8 +20,8 @@ public class HttpProxyClientHandle extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-     //客户端channel已关闭则不转发了
-    if(!clientChannel.isOpen()){
+    //客户端channel已关闭则不转发了
+    if (!clientChannel.isOpen()) {
       ReferenceCountUtil.release(msg);
       return;
     }
@@ -44,6 +46,8 @@ public class HttpProxyClientHandle extends ChannelInboundHandlerAdapter {
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
     ctx.channel().close();
     clientChannel.close();
-    super.exceptionCaught(ctx, cause);
+    HttpProxyExceptionHandle exceptionHandle = ((HttpProxyServerHandle) clientChannel.pipeline()
+        .get("serverHandle")).getExceptionHandle();
+    exceptionHandle.afterCatch(clientChannel, ctx.channel(), cause);
   }
 }
